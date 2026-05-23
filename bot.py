@@ -6,7 +6,7 @@ from telegram import (
     InlineKeyboardButton,
 )
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
@@ -14,23 +14,14 @@ from telegram.ext import (
     filters,
 )
 
-# ================= CONFIG =================
-
 TOKEN = "8368872106:AAHh3HTQDbcx7CxNAnwDGUa4Sbeha1gsDjU"
 
 ADMIN_ID = 1812185709
 
-# ================= DATABASE =================
-
 users = {}
-
-waiting_girls = []
-
-waiting_boys = []
-
+waiting_male = []
+waiting_female = []
 active_chats = {}
-
-# ================= MENU =================
 
 main_menu = ReplyKeyboardMarkup(
     [
@@ -40,7 +31,7 @@ main_menu = ReplyKeyboardMarkup(
             KeyboardButton("👦 Find Boys"),
         ],
         [
-            KeyboardButton("👤 Profile"),
+            KeyboardButton("👤 My Profile"),
             KeyboardButton("⚙️ Settings"),
         ],
         [KeyboardButton("💎 Premium")],
@@ -53,7 +44,7 @@ main_menu = ReplyKeyboardMarkup(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     if user_id not in users:
 
@@ -80,13 +71,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🔥 Welcome to MysticChat 🔥\n\n"
-        "Select your gender:",
+        "Choose your gender:",
         reply_markup=buttons,
     )
 
 # ================= GENDER =================
 
-async def gender_callback(
+async def gender_select(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
@@ -95,7 +86,7 @@ async def gender_callback(
 
     await query.answer()
 
-    user_id = query.message.chat_id
+    user_id = query.from_user.id
 
     users[user_id]["gender"] = query.data
 
@@ -110,7 +101,7 @@ async def save_age(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     if (
         user_id in users
@@ -122,18 +113,18 @@ async def save_age(
             users[user_id]["age"] = update.message.text
 
             await update.message.reply_text(
-                "✅ Profile Completed",
+                "✅ Profile Saved",
                 reply_markup=main_menu,
             )
 
-# ================= FIND =================
+# ================= FIND PARTNER =================
 
 async def find_partner(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     if user_id in active_chats:
 
@@ -149,9 +140,9 @@ async def find_partner(
 
     if gender == "male":
 
-        if waiting_girls:
+        if waiting_female:
 
-            partner = waiting_girls.pop(0)
+            partner = waiting_female.pop(0)
 
             active_chats[user_id] = partner
             active_chats[partner] = user_id
@@ -168,7 +159,7 @@ async def find_partner(
 
         else:
 
-            waiting_boys.append(user_id)
+            waiting_male.append(user_id)
 
             await update.message.reply_text(
                 "⏳ Waiting for girls..."
@@ -178,9 +169,9 @@ async def find_partner(
 
     elif gender == "female":
 
-        if waiting_boys:
+        if waiting_male:
 
-            partner = waiting_boys.pop(0)
+            partner = waiting_male.pop(0)
 
             active_chats[user_id] = partner
             active_chats[partner] = user_id
@@ -197,7 +188,7 @@ async def find_partner(
 
         else:
 
-            waiting_girls.append(user_id)
+            waiting_female.append(user_id)
 
             await update.message.reply_text(
                 "⏳ Waiting for boys..."
@@ -210,7 +201,7 @@ async def stop_chat(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     if user_id in active_chats:
 
@@ -242,13 +233,13 @@ async def stop_chat(
 
         await context.bot.send_message(
             user_id,
-            "🛑 Chat ended.",
+            "🛑 Chat Ended",
             reply_markup=buttons,
         )
 
         await context.bot.send_message(
             partner,
-            "🛑 Partner disconnected.",
+            "🛑 Partner Left",
             reply_markup=buttons,
         )
 
@@ -259,14 +250,14 @@ async def profile(
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     data = users[user_id]
 
     premium = "Yes" if data["premium"] else "No"
 
     await update.message.reply_text(
-        f"👤 Profile\n\n"
+        f"👤 Your Profile\n\n"
         f"Gender: {data['gender']}\n"
         f"Age: {data['age']}\n"
         f"Premium: {premium}"
@@ -284,8 +275,8 @@ async def premium(
         "₹49 Weekly\n"
         "₹99 Monthly\n\n"
         "Benefits:\n"
-        "✅ Unlimited Matches\n"
-        "✅ Faster Matching\n"
+        "✅ Unlimited Matching\n"
+        "✅ Fast Queue\n"
         "✅ Premium Badge"
     )
 
@@ -297,10 +288,10 @@ async def settings(
 ):
 
     await update.message.reply_text(
-        "⚙️ Settings Coming Soon"
+        "⚙️ Settings Panel Coming Soon"
     )
 
-# ================= CALLBACKS =================
+# ================= CALLBACK BUTTONS =================
 
 async def callback_buttons(
     update: Update,
@@ -311,19 +302,7 @@ async def callback_buttons(
 
     await query.answer()
 
-    if query.data == "report":
-
-        await context.bot.send_message(
-            ADMIN_ID,
-            f"⚠️ User Reported\n"
-            f"User ID: {query.message.chat_id}"
-        )
-
-        await query.message.reply_text(
-            "✅ Report Submitted"
-        )
-
-    elif query.data == "like":
+    if query.data == "like":
 
         await query.message.reply_text(
             "👍 Feedback Saved"
@@ -335,14 +314,26 @@ async def callback_buttons(
             "👎 Feedback Saved"
         )
 
-# ================= CHAT =================
+    elif query.data == "report":
 
-async def relay_message(
+        await context.bot.send_message(
+            ADMIN_ID,
+            f"🚫 User Reported\n\n"
+            f"User ID: {query.from_user.id}"
+        )
+
+        await query.message.reply_text(
+            "✅ Report Sent"
+        )
+
+# ================= CHAT RELAY =================
+
+async def relay(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
 
-    user_id = update.message.chat_id
+    user_id = update.effective_user.id
 
     # SAVE AGE
 
@@ -355,7 +346,7 @@ async def relay_message(
 
         return
 
-    # RELAY
+    # RELAY CHAT
 
     if user_id in active_chats:
 
@@ -391,7 +382,7 @@ async def relay_message(
 
 # ================= MENU BUTTONS =================
 
-async def menu_buttons(
+async def menu_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
@@ -402,7 +393,7 @@ async def menu_buttons(
 
         await find_partner(update, context)
 
-    elif text == "👤 Profile":
+    elif text == "👤 My Profile":
 
         await profile(update, context)
 
@@ -421,24 +412,24 @@ async def menu_buttons(
     elif text == "👧 Find Girls":
 
         await update.message.reply_text(
-            "👧 Matching with girls..."
+            "👧 Finding girls..."
         )
 
     elif text == "👦 Find Boys":
 
         await update.message.reply_text(
-            "👦 Matching with boys..."
+            "👦 Finding boys..."
         )
 
-# ================= BOT =================
+# ================= APP =================
 
-app = ApplicationBuilder().token(TOKEN).build()
+app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 
 app.add_handler(
     CallbackQueryHandler(
-        gender_callback,
+        gender_select,
         pattern="^(male|female)$",
     )
 )
@@ -453,14 +444,14 @@ app.add_handler(
 app.add_handler(
     MessageHandler(
         filters.TEXT & ~filters.COMMAND,
-        menu_buttons,
+        menu_handler,
     )
 )
 
 app.add_handler(
     MessageHandler(
         filters.ALL,
-        relay_message,
+        relay,
     )
 )
 
