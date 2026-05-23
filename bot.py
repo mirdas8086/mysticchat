@@ -10,6 +10,6 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 
-print("Bot Running...")
+print("🔥 Bot Running...")
 
 app.run_polling()
