@@ -1,8 +1,15 @@
-from telegram import Update
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
@@ -10,20 +17,35 @@ from telegram.ext import (
 # ================= CONFIG =================
 
 TOKEN = "8368872106:AAHh3HTQDbcx7CxNAnwDGUa4Sbeha1gsDjU"
-
 ADMIN_ID = 1812185709
 
-# ================= DATA =================
+# ================= DATABASE =================
 
-waiting_users = []
+users = {}
+
+waiting_male = []
+
+waiting_female = []
 
 active_chats = {}
 
-banned_users = []
+# ================= MENU =================
 
-premium_users = []
-
-user_limits = {}
+main_menu = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("⚡ Find Partner")],
+        [
+            KeyboardButton("👧 Match with Girls"),
+            KeyboardButton("👦 Match with Boys"),
+        ],
+        [
+            KeyboardButton("👤 My Profile"),
+            KeyboardButton("⚙️ Settings"),
+        ],
+        [KeyboardButton("💎 Premium")],
+    ],
+    resize_keyboard=True,
+)
 
 # ================= START =================
 
@@ -31,47 +53,88 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.message.chat_id
 
-    if user_id in banned_users:
-        return
+    if user_id not in users:
+
+        users[user_id] = {
+            "gender": None,
+            "age": None,
+            "premium": False,
+        }
+
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "👦 Male",
+                    callback_data="male",
+                ),
+                InlineKeyboardButton(
+                    "👧 Female",
+                    callback_data="female",
+                ),
+            ]
+        ]
+    )
 
     await update.message.reply_text(
         "🔥 Welcome to MysticChat 🔥\n\n"
-        "🔍 /find - Find Partner\n"
-        "⏭ /next - Next Partner\n"
-        "🛑 /stop - Stop Chat\n"
-        "⚠️ /report - Report User\n"
-        "💎 /premium - Premium Info\n"
-        "👥 /users - Admin Only"
+        "Select your gender:",
+        reply_markup=buttons,
     )
 
-# ================= FIND =================
+# ================= GENDER =================
 
-async def find(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def gender_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    user_id = query.message.chat_id
+
+    gender = query.data
+
+    users[user_id]["gender"] = gender
+
+    await query.message.reply_text(
+        "✅ Gender saved.\n\n"
+        "Send your age now."
+    )
+
+# ================= AGE =================
+
+async def save_age(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     user_id = update.message.chat_id
 
-    if user_id in banned_users:
-        return
+    if (
+        user_id in users
+        and users[user_id]["age"] is None
+    ):
 
-    # Daily Limit
+        if update.message.text.isdigit():
 
-    if user_id not in premium_users:
-
-        if user_id not in user_limits:
-            user_limits[user_id] = 0
-
-        if user_limits[user_id] >= 200:
+            users[user_id]["age"] = update.message.text
 
             await update.message.reply_text(
-                "❌ Daily limit reached.\n"
-                "Buy Premium for unlimited finds."
+                "✅ Profile setup completed.",
+                reply_markup=main_menu,
             )
 
-            return
+# ================= FIND =================
 
-        user_limits[user_id] += 1
+async def find_partner(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-    # Already Connected
+    user_id = update.message.chat_id
 
     if user_id in active_chats:
 
@@ -81,38 +144,68 @@ async def find(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # Match User
+    gender = users[user_id]["gender"]
 
-    if waiting_users and waiting_users[0] != user_id:
+    if gender == "male":
 
-        partner = waiting_users.pop(0)
+        if waiting_female:
 
-        active_chats[user_id] = partner
-        active_chats[partner] = user_id
+            partner = waiting_female.pop(0)
 
-        await context.bot.send_message(
-            user_id,
-            "✅ Connected anonymously."
-        )
+            active_chats[user_id] = partner
+            active_chats[partner] = user_id
 
-        await context.bot.send_message(
-            partner,
-            "✅ Connected anonymously."
-        )
+            await context.bot.send_message(
+                user_id,
+                "✅ Connected anonymously."
+            )
 
-    else:
+            await context.bot.send_message(
+                partner,
+                "✅ Connected anonymously."
+            )
 
-        if user_id not in waiting_users:
+        else:
 
-            waiting_users.append(user_id)
+            waiting_male.append(user_id)
 
-        await update.message.reply_text(
-            "⏳ Waiting for partner..."
-        )
+            await update.message.reply_text(
+                "⏳ Waiting for girls..."
+            )
+
+    elif gender == "female":
+
+        if waiting_male:
+
+            partner = waiting_male.pop(0)
+
+            active_chats[user_id] = partner
+            active_chats[partner] = user_id
+
+            await context.bot.send_message(
+                user_id,
+                "✅ Connected anonymously."
+            )
+
+            await context.bot.send_message(
+                partner,
+                "✅ Connected anonymously."
+            )
+
+        else:
+
+            waiting_female.append(user_id)
+
+            await update.message.reply_text(
+                "⏳ Waiting for boys..."
+            )
 
 # ================= STOP =================
 
-async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stop_chat(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     user_id = update.message.chat_id
 
@@ -123,141 +216,219 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del active_chats[user_id]
         del active_chats[partner]
 
+        rating_buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "👍 Like",
+                        callback_data="like",
+                    ),
+                    InlineKeyboardButton(
+                        "👎 Dislike",
+                        callback_data="dislike",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🚫 Report",
+                        callback_data="report",
+                    )
+                ],
+            ]
+        )
+
         await context.bot.send_message(
             user_id,
-            "🛑 Chat ended."
+            "🛑 Chat ended.",
+            reply_markup=rating_buttons,
         )
 
         await context.bot.send_message(
             partner,
-            "🛑 Partner disconnected."
+            "🛑 Partner disconnected.",
+            reply_markup=rating_buttons,
         )
 
-# ================= NEXT =================
+# ================= PROFILE =================
 
-async def next_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    await stop(update, context)
-
-    await find(update, context)
-
-# ================= REPORT =================
-
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def profile(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     user_id = update.message.chat_id
 
-    if user_id in active_chats:
+    data = users[user_id]
 
-        partner = active_chats[user_id]
+    premium = "Yes" if data["premium"] else "No"
 
-        await context.bot.send_message(
-            ADMIN_ID,
-            f"⚠️ USER REPORT\n\n"
-            f"Reporter ID: {user_id}\n"
-            f"Reported ID: {partner}"
-        )
-
-        await update.message.reply_text(
-            "✅ Report submitted."
-        )
+    await update.message.reply_text(
+        f"👤 Your Profile\n\n"
+        f"Gender: {data['gender']}\n"
+        f"Age: {data['age']}\n"
+        f"Premium: {premium}"
+    )
 
 # ================= PREMIUM =================
 
-async def premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def premium(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-    await update.message.reply_text(
-        "💎 Premium Plans 💎\n\n"
-        "₹49 - Weekly\n"
-        "₹99 - Monthly\n\n"
-        "Benefits:\n"
-        "✅ Unlimited Finds\n"
-        "✅ Priority Matching\n"
-        "✅ Faster Connections"
+    buttons = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💎 Buy Premium",
+                    url="https://t.me/",
+                )
+            ]
+        ]
     )
 
-# ================= ADMIN USERS =================
+    await update.message.reply_text(
+        "💎 Premium Features\n\n"
+        "✅ Unlimited Matches\n"
+        "✅ Priority Matching\n"
+        "✅ Faster Connections\n"
+        "✅ Premium Badge",
+        reply_markup=buttons,
+    )
 
-async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ================= SETTINGS =================
 
-    if update.message.chat_id == ADMIN_ID:
+async def settings(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
-        total = len(waiting_users) + len(active_chats)
+    await update.message.reply_text(
+        "⚙️ Settings\n\n"
+        "More settings coming soon."
+    )
 
-        await update.message.reply_text(
-            f"👥 Total Users: {total}"
+# ================= REPORT =================
+
+async def callback_buttons(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    await query.answer()
+
+    if query.data == "report":
+
+        await context.bot.send_message(
+            ADMIN_ID,
+            f"⚠️ User Reported\n"
+            f"User ID: {query.message.chat_id}"
         )
 
-# ================= BAN =================
-
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if update.message.chat_id != ADMIN_ID:
-        return
-
-    try:
-
-        uid = int(context.args[0])
-
-        banned_users.append(uid)
-
-        await update.message.reply_text(
-            "✅ User banned."
+        await query.message.reply_text(
+            "✅ Report submitted."
         )
 
-    except:
+    elif query.data == "like":
 
-        await update.message.reply_text(
-            "/ban USER_ID"
+        await query.message.reply_text(
+            "👍 Feedback saved."
         )
 
-# ================= MESSAGE =================
+    elif query.data == "dislike":
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await query.message.reply_text(
+            "👎 Feedback saved."
+        )
+
+# ================= CHAT =================
+
+async def handle_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
 
     user_id = update.message.chat_id
+
+    # Save Age
+
+    if (
+        user_id in users
+        and users[user_id]["age"] is None
+    ):
+
+        await save_age(update, context)
+
+        return
+
+    # Relay Messages
 
     if user_id in active_chats:
 
         partner = active_chats[user_id]
-
-        # TEXT
 
         if update.message.text:
 
             await context.bot.send_message(
                 partner,
-                update.message.text
+                update.message.text,
             )
-
-        # PHOTO
 
         elif update.message.photo:
 
             await context.bot.send_photo(
                 partner,
                 update.message.photo[-1].file_id,
-                caption=update.message.caption
+                caption=update.message.caption,
             )
-
-        # VIDEO
 
         elif update.message.video:
 
             await context.bot.send_video(
                 partner,
                 update.message.video.file_id,
-                caption=update.message.caption
+                caption=update.message.caption,
             )
-
-        # VOICE
 
         elif update.message.voice:
 
             await context.bot.send_voice(
                 partner,
-                update.message.voice.file_id
+                update.message.voice.file_id,
             )
+
+# ================= BUTTON HANDLER =================
+
+async def menu_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    text = update.message.text
+
+    if text == "⚡ Find Partner":
+        await find_partner(update, context)
+
+    elif text == "👤 My Profile":
+        await profile(update, context)
+
+    elif text == "⚙️ Settings":
+        await settings(update, context)
+
+    elif text == "💎 Premium":
+        await premium(update, context)
+
+    elif text == "👧 Match with Girls":
+        await update.message.reply_text(
+            "👧 Girl matching enabled."
+        )
+
+    elif text == "👦 Match with Boys":
+        await update.message.reply_text(
+            "👦 Boy matching enabled."
+        )
 
 # ================= BOT =================
 
@@ -265,30 +436,35 @@ app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
 
-app.add_handler(CommandHandler("find", find))
+app.add_handler(
+    CallbackQueryHandler(
+        gender_callback,
+        pattern="^(male|female)$",
+    )
+)
 
-app.add_handler(CommandHandler("stop", stop))
-
-app.add_handler(CommandHandler("next", next_chat))
-
-app.add_handler(CommandHandler("report", report))
-
-app.add_handler(CommandHandler("premium", premium))
-
-app.add_handler(CommandHandler("users", users))
-
-app.add_handler(CommandHandler("ban", ban))
+app.add_handler(
+    CallbackQueryHandler(
+        callback_buttons,
+        pattern="^(like|dislike|report)$",
+    )
+)
 
 app.add_handler(
     MessageHandler(
         filters.TEXT
-        | filters.PHOTO
-        | filters.VIDEO
-        | filters.VOICE,
-        handle_message
+        & ~filters.COMMAND,
+        menu_handler,
     )
 )
 
-print("🔥 MysticChat Running...")
+app.add_handler(
+    MessageHandler(
+        filters.ALL,
+        handle_message,
+    )
+)
+
+print("🔥 MysticChat Advanced Running...")
 
 app.run_polling()
